@@ -38,9 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     setState(() {
                       isDarkMode = value;
                     });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Global Dark Mode coming in Phase 3!")),
-                    );
+
                   },
                 ),
               ],
@@ -74,9 +72,6 @@ class _SettingsPageState extends State<SettingsPage> {
               height: 50,
               child: ElevatedButton(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Edit profile coming soon")),
-                  );
                 },
                 child: const Text("Edit Profile"),
               ),
@@ -88,9 +83,6 @@ class _SettingsPageState extends State<SettingsPage> {
               height: 50,
               child: ElevatedButton(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Privacy settings coming soon")),
-                  );
                 },
                 child: const Text("Privacy & Security"),
               ),

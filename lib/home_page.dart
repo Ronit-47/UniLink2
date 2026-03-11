@@ -93,21 +93,21 @@ class _HomePageState extends State<HomePage> {
             _featureBox("Matchmaker", Icons.person, Colors.red, () {}),
             _featureBox("The Vault", Icons.book, Colors.green, () {}),
             _featureBox("BroLX", Icons.shopping_bag, Colors.blue, () {
-    Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const BrolxPage()),
-    );
-    }),
+              Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const BrolxPage()),
+                 );
+                }),
     // UPDATED SETTINGS BOX:
-    _featureBox("Settings", Icons.settings, Colors.orange, () {
-    Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const SettingsPage()),
-    );
-    }),
-    ],
-    ),
-    ),
+              _featureBox("Settings", Icons.settings, Colors.orange, () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
+                );
+              }),
+            ],
+          ),
+        ),
           ],
         ),
       ),
@@ -137,3 +137,4 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
