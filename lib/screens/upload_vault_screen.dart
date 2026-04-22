@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/vault_service.dart';
+import 'package:flutter/services.dart';
 
 class UploadVaultScreen extends StatefulWidget {
   const UploadVaultScreen({super.key});
@@ -11,7 +12,12 @@ class UploadVaultScreen extends StatefulWidget {
 class _UploadVaultScreenState extends State<UploadVaultScreen> {
   final _subjectController = TextEditingController();
   final _topicController = TextEditingController();
+
   String _selectedYear = 'SY'; // Default
+  String _selectedBranch = 'Computer'; // Default Branch
+
+  // Add your branches here
+  final List<String> _branches = ['Computer', 'IT', 'ENTC', 'Mechanical', 'Civil'];
 
   bool _isUploading = false;
   final _vaultService = VaultService();
@@ -24,9 +30,10 @@ class _UploadVaultScreenState extends State<UploadVaultScreen> {
 
     setState(() => _isUploading = true);
 
-    // This single function call triggers the picker, the storage upload, and the database insert!
+    // Passed the new branch parameter
     final error = await _vaultService.uploadStudyMaterial(
       academicYear: _selectedYear,
+      branch: _selectedBranch,
       subject: _subjectController.text,
       topic: _topicController.text,
     );
@@ -39,7 +46,7 @@ class _UploadVaultScreenState extends State<UploadVaultScreen> {
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File saved to The Vault!"), backgroundColor: Colors.green));
-        Navigator.pop(context, true); // Go back and trigger a refresh
+        Navigator.pop(context, true);
       }
     }
   }
@@ -48,7 +55,7 @@ class _UploadVaultScreenState extends State<UploadVaultScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Upload to Vault", style: TextStyle(color: Colors.green))),
-      body: Padding(
+      body: SingleChildScrollView( // Added scroll view to prevent keyboard overflow
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -56,27 +63,63 @@ class _UploadVaultScreenState extends State<UploadVaultScreen> {
             const Text("Tag your file so others can find it:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
 
-            DropdownButtonFormField<String>(
-              value: _selectedYear,
-              decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Academic Year"),
-              items: ['FY', 'SY', 'TY', 'Final'].map((String value) {
-                return DropdownMenuItem<String>(value: value, child: Text(value));
-              }).toList(),
-              onChanged: (newValue) => setState(() => _selectedYear = newValue!),
+            // Year & Branch Row
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedYear,
+                    decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Year"),
+                    items: ['FY', 'SY', 'TY', 'Final'].map((String value) {
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
+                    }).toList(),
+                    onChanged: (newValue) => setState(() => _selectedYear = newValue!),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedBranch,
+                    decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Branch"),
+                    items: _branches.map((String value) {
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
+                    }).toList(),
+                    onChanged: (newValue) => setState(() => _selectedBranch = newValue!),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
+            // Subject TextField
             TextField(
               controller: _subjectController,
-              decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Subject (e.g., Logic Devices)"),
+              // Add this formatter to block spaces
+              inputFormatters: [
+                FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              ],
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Subject (e.g., LogicDevices)", // Updated hint
+                hintText: "No spaces allowed",
+              ),
             ),
             const SizedBox(height: 16),
 
+// Topic TextField
             TextField(
               controller: _topicController,
-              decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Topic (e.g., Unit 1 Notes)"),
+              // Add this formatter to block spaces
+              inputFormatters: [
+                FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              ],
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Topic (e.g., Unit1Notes)", // Updated hint
+                hintText: "No spaces allowed",
+              ),
             ),
-            const SizedBox(height: 40),
 
             SizedBox(
               height: 55,

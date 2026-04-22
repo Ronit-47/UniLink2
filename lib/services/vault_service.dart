@@ -1,66 +1,99 @@
 import 'dart:io';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class VaultService {
+  // Initialize the Supabase client
   final supabase = Supabase.instance.client;
 
-  // 1. UPLOAD A FILE
+  // Handles the file picker, storage upload, and database insert
   Future<String?> uploadStudyMaterial({
     required String academicYear,
+    required String branch,
     required String subject,
     required String topic,
   }) async {
     try {
-      // Step A: Open the phone's file picker
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      // 1. Pick the file (PDF or DOCX)
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'doc', 'docx', 'ppt', 'txt'], // Only allow study formats
+        allowedExtensions: ['pdf', 'doc', 'docx'],
       );
 
-      // If they closed the picker without selecting anything
-      if (result == null) return "Upload cancelled.";
+      if (result == null) {
+        return "Upload cancelled.";
+      }
 
-      // Step B: Prepare the file
       File file = File(result.files.single.path!);
-      String originalName = result.files.single.name;
-
-      // We add a timestamp to the filename so if two people upload "Unit1.pdf", it doesn't overwrite!
-      String safeFileName = '${DateTime.now().millisecondsSinceEpoch}_$originalName';
+      String originalFileName = result.files.single.name;
       String userId = supabase.auth.currentUser!.id;
 
-      // Step C: Upload the heavy file to the 'vault' Storage Bucket
-      await supabase.storage.from('vault').upload(safeFileName, file);
+      // --- CUSTOM FILE NAMING LOGIC ---
+      // Extract the extension (e.g., 'pdf')
+      String extension = originalFileName.split('.').last;
 
-      // Step D: Get the public URL for the newly uploaded file
-      final fileUrl = supabase.storage.from('vault').getPublicUrl(safeFileName);
+      // Clean up spaces in subject and topic to prevent broken URLs
+      String cleanSubject = subject.replaceAll(' ', '_');
+      String cleanTopic = topic.replaceAll(' ', '_');
 
-      // Step E: Save the details and the URL to our relational Database table
+      // Create the new custom name: e.g., "Logic_Devices_Unit_1_Notes.pdf"
+      String customFileName = '${cleanSubject}_$cleanTopic.$extension';
+
+      // 2. Upload to Supabase Storage bucket named 'vault'
+      final storagePath = '$academicYear/$branch/$customFileName';
+      await supabase.storage.from('vault').upload(
+        storagePath,
+        file,
+      );
+
+      // 3. Get the public URL for downloading later
+      final fileUrl = supabase.storage.from('vault').getPublicUrl(storagePath);
+
+      // 4. Save the record to your PostgreSQL database
       await supabase.from('vault_files').insert({
-        'uploader_id': userId,
         'academic_year': academicYear,
-        'subject': subject.trim(),
-        'topic': topic.trim(),
-        'file_name': originalName,
+        'branch': branch,
+        'subject': subject,
+        'topic': topic,
+        'file_name': customFileName, // Now saves the custom name!
         'file_url': fileUrl,
+        'uploader_id': userId,       // Matches your table column exactly!
       });
 
-      return null; // Success!
+      return null; // Returning null means success (no errors)
     } catch (e) {
-      return "Error uploading file: $e";
+      print("Upload error: $e");
+      return e.toString();
     }
   }
 
-  // 2. FETCH FILES BASED ON YEAR
-  Future<List<dynamic>> fetchVaultFiles(String year) async {
+  // Fetches files based on Year, Branch, and Search Query
+  Future<List<dynamic>> fetchVaultFiles(String year, String branch, String searchQuery) async {
     try {
-      // We use the same 'Profiles' join hack to show who uploaded it!
-      final response = await supabase
+      var query = supabase
           .from('vault_files')
           .select('*, profiles(full_name)')
-          .eq('academic_year', year)
-          .order('created_at', ascending: false);
+          .eq('academic_year', year);
 
+      if (branch != 'All') {
+        query = query.eq('branch', branch);
+      }
+
+      if (searchQuery.isNotEmpty) {
+        // Split the search query by spaces or underscores
+        final keywords = searchQuery.split(RegExp(r'[\s_]+'));
+
+        // Build a dynamic search string for Supabase
+        // This makes sure EVERY keyword must exist somewhere in the row
+        for (String keyword in keywords) {
+          if (keyword.isNotEmpty) {
+            query = query.or('subject.ilike.%$keyword%,topic.ilike.%$keyword%,file_name.ilike.%$keyword%');
+          }
+        }
+      }
+
+      // Supabase returns a List of Maps by default
+      final response = await query;
       return response as List<dynamic>;
     } catch (e) {
       print("Fetch error: $e");
