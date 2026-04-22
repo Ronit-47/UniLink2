@@ -40,6 +40,11 @@ dependencies:
   file_picker: ^10.3.10
   image_picker: ^1.2.1
 
+  firebase_core: ^3.1.0        
+  cloud_firestore: ^5.1.0      
+  firebase_messaging: ^15.0.0  
+  intl: ^0.19.0               
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -92,3 +97,98 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN.DART — PATCH (add Firebase.initializeApp)
+# Find your existing main() function and add the two lines marked with ← ADD
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+# BEFORE:
+#
+# void main() async {
+#   WidgetsFlutterBinding.ensureInitialized();
+#   await Supabase.initialize(
+#     url: 'YOUR_SUPABASE_URL',
+#     anonKey: 'YOUR_ANON_KEY',
+#   );
+#   runApp(const MyApp());
+# }
+ 
+# AFTER:
+#
+# import 'package:firebase_core/firebase_core.dart';   ← ADD THIS IMPORT
+#
+# void main() async {
+#   WidgetsFlutterBinding.ensureInitialized();
+#   await Supabase.initialize(
+#     url: 'YOUR_SUPABASE_URL',
+#     anonKey: 'YOUR_ANON_KEY',
+#   );
+#   await Firebase.initializeApp();                    ← ADD THIS LINE
+#   runApp(const MyApp());
+# }
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# CIRCLES_SERVICE.DART — ADD THIS METHOD (if not already present)
+# Your existing circles_service.dart fetches users. Make sure it has this:
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+# Inside CirclesService class, ensure you have:
+#
+# /// Returns all campus users EXCEPT the currently logged-in user.
+# /// Called by CirclesScreen to populate the People tab.
+# Future<List<Map<String, dynamic>>> getCampusUsers() async {
+#   final currentId = Supabase.instance.client.auth.currentUser!.id;
+#   final response = await Supabase.instance.client
+#       .from('profiles')
+#       .select('id, full_name, avatar_url, branch, year, div, trust_score')
+#       .neq('id', currentId);   // exclude ourselves
+#   return List<Map<String, dynamic>>.from(response);
+# }
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# FIRESTORE SECURITY RULES
+# Paste this in: Firebase Console → Firestore → Rules tab
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+# rules_version = '2';
+# service cloud.firestore {
+#   match /databases/{database}/documents {
+#     // DEVELOPMENT: open access — tighten before app store submission
+#     match /conversations/{conversationId} {
+#       allow read, write: if true;
+#       match /messages/{messageId} {
+#         allow read, write: if true;
+#       }
+#     }
+#   }
+# }
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# ANDROID SETUP CHECKLIST
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 1. android/build.gradle (project level) — add inside buildscript > dependencies:
+#      classpath 'com.google.gms:google-services:4.4.2'
+#
+# 2. android/app/build.gradle (app level) — add at the very BOTTOM of the file:
+#      apply plugin: 'com.google.gms.google-services'
+#
+# 3. Place google-services.json at:
+#      android/app/google-services.json
+#
+# 4. Make sure minSdkVersion is at least 21 in android/app/build.gradle:
+#      minSdkVersion 21
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# IOS SETUP CHECKLIST
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 1. Open ios/Runner.xcworkspace in Xcode
+# 2. Drag GoogleService-Info.plist into Runner/Runner folder
+#    (Check "Copy items if needed" in the dialog)
+# 3. Make sure iOS deployment target is 13.0 or higher
+#    (Xcode → Runner → General → Minimum Deployments)
+# 4. Run: cd ios && pod install

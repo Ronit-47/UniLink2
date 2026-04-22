@@ -20,4 +20,11 @@ class CirclesService {
       return [];
     }
   }
+
+  // Used by CirclesScreen — returns the same data as fetchNetwork()
+  // but typed as List<Map<String, dynamic>> so the UI can read fields safely.
+  Future<List<Map<String, dynamic>>> getCampusUsers() async {
+    final result = await fetchNetwork();
+    return result.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
 }

@@ -1,5 +1,9 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.24.0")
+    cmake_policy(SET CMP0148 OLD)
+endif()
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 project(cpofsad LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
