@@ -42,7 +42,8 @@ class VibeMatchService {
   // ==========================================
   // 2. RECORD A SWIPE
   // ==========================================
-  Future<void> recordSwipe({required String targetUserId, required bool isRightSwipe}) async {
+  Future<void> recordSwipe(
+      {required String targetUserId, required bool isRightSwipe}) async {
     try {
       final myId = supabase.auth.currentUser!.id;
 
@@ -59,7 +60,7 @@ class VibeMatchService {
   }
 
   // ==========================================
-  // 3. SAVE VIBE PROFILE (GOOGLE FORM QUIZ DATA)
+  // 3. SAVE VIBE PROFILE (NOW WITH CUSTOM QUIZ & UPSERT FIX!)
   // ==========================================
   Future<String?> saveVibeProfile({
     required String bio,
@@ -70,42 +71,43 @@ class VibeMatchService {
     required String branch,
     required String division,
     required dynamic imageFile,
+    List<Map<String, dynamic>>? customQuiz,
   }) async {
     try {
       final userId = supabase.auth.currentUser!.id;
       String? uploadedImageUrl;
 
-      // STEP A: If they selected an image, upload it to the 'avatars' Storage bucket
+      // STEP A: Upload Avatar if provided
       if (imageFile != null) {
         final fileExt = imageFile.path.split('.').last;
         final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-
         await supabase.storage.from('avatars').upload(fileName, imageFile);
         uploadedImageUrl = supabase.storage.from('avatars').getPublicUrl(fileName);
       }
 
-      // STEP B: Update their main structured profile
+      // STEP B: Update (or Create!) the main structured profile
       final profileUpdates = {
+        'id': userId, // <-- CRITICAL FIX: Ensure the ID is passed so it can be created if missing
         'academic_year': academicYear,
         'branch': branch.trim(),
         'division': division.trim(),
       };
 
-      // Only overwrite the avatar URL if they actually uploaded a new picture
       if (uploadedImageUrl != null) {
         profileUpdates['avatar_url'] = uploadedImageUrl;
       }
 
-      await supabase.from('profiles').update(profileUpdates).eq('id', userId);
+      // <-- CRITICAL FIX: Changed from .update() to .upsert()
+      await supabase.from('profiles').upsert(profileUpdates);
 
-      // STEP C: Upsert their roommate quiz preferences
-      // Note the crucial onConflict: 'user_id' to prevent duplicate key database crashes
+      // STEP C: Save the Vibe Quiz & Custom Quiz
       await supabase.from('vibe_quizzes').upsert({
         'user_id': userId,
         'bio': bio.trim(),
         'looking_for': lookingFor,
         'red_flags': redFlags.trim(),
         'green_flags': greenFlags.trim(),
+        'custom_quiz': customQuiz ?? [],
       }, onConflict: 'user_id');
 
       return null; // Success!

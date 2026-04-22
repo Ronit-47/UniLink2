@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/vibematch_service.dart';
+import 'create_quiz_screen.dart'; // Make sure this is imported!
 
 class EditVibeScreen extends StatefulWidget {
   const EditVibeScreen({super.key});
@@ -21,7 +22,9 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
   bool _isLoading = false;
   final _vibeService = VibeMatchService();
 
-  // THE QUIZ LOGIC: Pre-defined options to make it feel like a Google Form
+  // Holds the user's custom quiz data
+  List<Map<String, dynamic>>? _customQuizData;
+
   final List<String> _allGreenFlags = ['Early Bird', 'Night Owl', 'Clean Freak', 'Chill/Messy', 'Gym Rat', 'Gamer', 'Studious', 'Party Goer'];
   final List<String> _allRedFlags = ['Smokes', 'Loud Music', 'Shares Clothes', 'Messy Kitchen', 'Never Leaves Room'];
 
@@ -36,7 +39,6 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
 
-    // Convert the selected chips into a comma-separated string for the database
     final greenFlagsString = _selectedGreenFlags.join(', ');
     final redFlagsString = _selectedRedFlags.join(', ');
 
@@ -49,6 +51,7 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
       branch: _branchController.text,
       division: _divController.text,
       imageFile: _selectedImage,
+      customQuiz: _customQuizData, // Passes the quiz to the database!
     );
 
     if (mounted) {
@@ -56,7 +59,7 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
       if (error != null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile Live! ✨"), backgroundColor: Colors.pinkAccent));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile & Quiz Live! ✨"), backgroundColor: Colors.pinkAccent));
         Navigator.pop(context);
       }
     }
@@ -72,7 +75,6 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // PHOTO UPLOAD
             Center(
               child: GestureDetector(
                 onTap: _pickImage,
@@ -86,7 +88,6 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
             ),
             const SizedBox(height: 32),
 
-            // GOOGLE FORM STYLE CARD 1: Academic Info
             _buildQuizCard(
               title: "1. The Basics",
               child: Column(
@@ -103,7 +104,6 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
               ),
             ),
 
-            // GOOGLE FORM STYLE CARD 2: Green Flags (Multi-Select)
             _buildQuizCard(
               title: "2. Your Vibe (Select multiple) ✅",
               child: Wrap(
@@ -115,17 +115,12 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
                     label: Text(flag),
                     selected: isSelected,
                     selectedColor: Colors.green.withOpacity(0.3),
-                    onSelected: (selected) {
-                      setState(() {
-                        selected ? _selectedGreenFlags.add(flag) : _selectedGreenFlags.remove(flag);
-                      });
-                    },
+                    onSelected: (selected) => setState(() => selected ? _selectedGreenFlags.add(flag) : _selectedGreenFlags.remove(flag)),
                   );
                 }).toList(),
               ),
             ),
 
-            // GOOGLE FORM STYLE CARD 3: Red Flags (Multi-Select)
             _buildQuizCard(
               title: "3. Dealbreakers (Select multiple) 🚩",
               child: Wrap(
@@ -137,21 +132,50 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
                     label: Text(flag),
                     selected: isSelected,
                     selectedColor: Colors.red.withOpacity(0.3),
-                    onSelected: (selected) {
-                      setState(() {
-                        selected ? _selectedRedFlags.add(flag) : _selectedRedFlags.remove(flag);
-                      });
-                    },
+                    onSelected: (selected) => setState(() => selected ? _selectedRedFlags.add(flag) : _selectedRedFlags.remove(flag)),
                   );
                 }).toList(),
               ),
             ),
 
-            // GOOGLE FORM STYLE CARD 4: Bio
             _buildQuizCard(
               title: "4. About Me",
               child: TextField(controller: _bioController, maxLines: 3, decoration: const InputDecoration(hintText: "I sleep late, study hard, and make great coffee...", border: OutlineInputBorder())),
             ),
+
+            // --- NEW: THE CUSTOM QUIZ BUILDER BUTTON ---
+            _buildQuizCard(
+              title: "5. Personal Roommate Quiz 🎯",
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch, // Makes button full width
+                children: [
+                  const Text("Create a custom quiz that potential roommates must answer to match with you!", style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      // Launch the builder and wait for the results
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const CreateQuizScreen()),
+                      );
+                      if (result != null) {
+                        setState(() => _customQuizData = result as List<Map<String, dynamic>>);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Custom Quiz Saved!"), backgroundColor: Colors.green));
+                      }
+                    },
+                    icon: const Icon(Icons.quiz_rounded),
+                    label: Text(_customQuizData == null ? "Build My Quiz" : "Edit My Quiz (${_customQuizData!.length} Qs)"),
+                    style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.indigo.withOpacity(0.1),
+                        foregroundColor: Colors.indigo,
+                        elevation: 0
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 24),
 
             SizedBox(
@@ -159,7 +183,7 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _saveProfile,
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Submit Quiz & Match", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Save & Match", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -168,7 +192,6 @@ class _EditVibeScreenState extends State<EditVibeScreen> {
     );
   }
 
-  // Helper function to draw the neat white Google-Form style cards
   Widget _buildQuizCard({required String title, required Widget child}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
