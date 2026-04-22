@@ -175,10 +175,27 @@ class _VaultFeedScreenState extends State<VaultFeedScreen> with SingleTickerProv
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.download_rounded, color: Colors.green, size: 30),
-                      onPressed: () {
+                      onPressed: () async {
+                        // 1. Show an initial loading message
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Downloading ${file['topic']}...")),
+                          SnackBar(content: Text("Downloading ${file['file_name']}...")),
                         );
+
+                        // 2. Trigger the actual download
+                        final resultMessage = await _vaultService.downloadStudyMaterial(
+                          file['file_url'],
+                          file['file_name'] ?? 'UniLink_Notes.pdf', // Fallback name just in case
+                        );
+
+                        // 3. Show the success or error message
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(resultMessage),
+                              backgroundColor: resultMessage.contains("Success") ? Colors.green : Colors.red,
+                            ),
+                          );
+                        }
                       },
                     ),
                   ),

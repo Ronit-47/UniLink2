@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 
 class VaultService {
   // Initialize the Supabase client
@@ -98,6 +100,36 @@ class VaultService {
     } catch (e) {
       print("Fetch error: $e");
       return [];
+    }
+  }
+  // --- NEW DOWNLOAD METHOD ---
+  Future<String> downloadStudyMaterial(String url, String fileName) async {
+    try {
+      // 1. Find the laptop's default 'Downloads' folder
+      Directory? downloadsDir = await getDownloadsDirectory();
+
+      if (downloadsDir == null) {
+        return "Error: Could not find Downloads folder.";
+      }
+
+      // 2. Create the exact path where the file will be saved
+      // Platform.pathSeparator handles Windows (\) vs Mac/Linux (/) automatically
+      String savePath = '${downloadsDir.path}${Platform.pathSeparator}$fileName';
+
+      // 3. Fetch the file data directly from the Supabase URL
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        // 4. Create the file and write the downloaded bytes into it
+        File file = File(savePath);
+        await file.writeAsBytes(response.bodyBytes);
+        return "Success: Saved to Downloads folder!";
+      } else {
+        return "Error: Failed to download from server.";
+      }
+    } catch (e) {
+      print("Download error: $e");
+      return "Error: Something went wrong.";
     }
   }
 }
