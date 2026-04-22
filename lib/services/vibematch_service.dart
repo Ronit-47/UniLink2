@@ -1,20 +1,37 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class VibeMatchService {
-  // THIS is the line that was missing! It connects the service to your DB.
   final supabase = Supabase.instance.client;
 
-  // 1. FETCH POTENTIAL MATCHES
-  Future<List<dynamic>> fetchPotentialRoommates() async {
+  // ==========================================
+  // 1. FETCH POTENTIAL MATCHES (WITH ADVANCED FILTERS)
+  // ==========================================
+  Future<List<dynamic>> fetchPotentialRoommates({
+    String? yearFilter,
+    String? branchFilter,
+  }) async {
     try {
       final myId = supabase.auth.currentUser!.id;
 
-      // Get everyone from the profiles table WHERE their ID is NOT equal to my ID
-      final response = await supabase
+      // Start the base query: Fetch everyone EXCEPT the logged-in user
+      // We also use a join to fetch their quiz data at the same time!
+      var query = supabase
           .from('profiles')
-          .select('*')
+          .select('*, vibe_quizzes(*)')
           .neq('id', myId);
 
+      // Apply Year Filter (if they selected something other than 'All')
+      if (yearFilter != null && yearFilter != 'All') {
+        query = query.eq('academic_year', yearFilter);
+      }
+
+      // Apply Branch Filter (if they typed something in the search box)
+      if (branchFilter != null && branchFilter.isNotEmpty) {
+        // .ilike makes the search case-insensitive (e.g. 'cse' matches 'CSE')
+        query = query.ilike('branch', '%$branchFilter%');
+      }
+
+      final response = await query;
       return response as List<dynamic>;
     } catch (e) {
       print("Fetch error: $e");
@@ -22,12 +39,29 @@ class VibeMatchService {
     }
   }
 
-  // 2. RECORD A SWIPE (Placeholder for the matching algorithm)
-  Future<void> recordSwipe({required String targetUserId, required bool isRightSwipe}) async {
-    print("Swiped ${isRightSwipe ? 'RIGHT' : 'LEFT'} on user: $targetUserId");
+  // ==========================================
+  // 2. RECORD A SWIPE
+  // ==========================================
+  Future<void> recordSwipe(
+      {required String targetUserId, required bool isRightSwipe}) async {
+    try {
+      final myId = supabase.auth.currentUser!.id;
+
+      await supabase.from('swipes').insert({
+        'swiper_id': myId,
+        'swiped_id': targetUserId,
+        'direction': isRightSwipe ? 'RIGHT' : 'LEFT',
+      });
+
+      print("Swiped ${isRightSwipe ? 'RIGHT' : 'LEFT'} on user: $targetUserId");
+    } catch (e) {
+      print("Error recording swipe: $e");
+    }
   }
 
-  // 3. SAVE OR UPDATE VIBE PROFILE (NOW WITH IMAGE & ACADEMIC INFO)
+  // ==========================================
+  // 3. SAVE VIBE PROFILE (NOW WITH CUSTOM QUIZ & UPSERT FIX!)
+  // ==========================================
   Future<String?> saveVibeProfile({
     required String bio,
     required String lookingFor,
@@ -36,43 +70,45 @@ class VibeMatchService {
     required String academicYear,
     required String branch,
     required String division,
-    required dynamic imageFile, // We pass the image file here
+    required dynamic imageFile,
+    List<Map<String, dynamic>>? customQuiz,
   }) async {
     try {
       final userId = supabase.auth.currentUser!.id;
       String? uploadedImageUrl;
 
-      // STEP A: If they selected an image, upload it to Storage
+      // STEP A: Upload Avatar if provided
       if (imageFile != null) {
         final fileExt = imageFile.path.split('.').last;
         final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-
         await supabase.storage.from('avatars').upload(fileName, imageFile);
         uploadedImageUrl = supabase.storage.from('avatars').getPublicUrl(fileName);
       }
 
-      // STEP B: Update their main profile with the new info & photo URL
+      // STEP B: Update (or Create!) the main structured profile
       final profileUpdates = {
-        'bio': bio.trim(),
+        'id': userId, // <-- CRITICAL FIX: Ensure the ID is passed so it can be created if missing
         'academic_year': academicYear,
         'branch': branch.trim(),
         'division': division.trim(),
       };
 
-      // Only update the avatar URL if they actually uploaded a new picture
       if (uploadedImageUrl != null) {
         profileUpdates['avatar_url'] = uploadedImageUrl;
       }
 
-      await supabase.from('profiles').update(profileUpdates).eq('id', userId);
+      // <-- CRITICAL FIX: Changed from .update() to .upsert()
+      await supabase.from('profiles').upsert(profileUpdates);
 
-      // STEP C: Upsert their roommate preferences
+      // STEP C: Save the Vibe Quiz & Custom Quiz
       await supabase.from('vibe_quizzes').upsert({
         'user_id': userId,
+        'bio': bio.trim(),
         'looking_for': lookingFor,
         'red_flags': redFlags.trim(),
         'green_flags': greenFlags.trim(),
-      },onConflict: 'user_id');
+        'custom_quiz': customQuiz ?? [],
+      }, onConflict: 'user_id');
 
       return null; // Success!
     } catch (e) {
