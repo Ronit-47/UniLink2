@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:google_fonts/google_fonts.dart'; // Kept your premium fonts!
+
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -27,7 +28,8 @@ class UniLinkApp extends StatelessWidget {
       theme: ThemeData(
         // We will use Google Fonts to make the app look premium instantly
         textTheme: GoogleFonts.poppinsTextTheme(),
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        // Updated to match the deep indigo branding of the new login screen
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E3192)),
         useMaterial3: true,
       ),
       home: const AuthGatekeeper(),
@@ -45,7 +47,13 @@ class AuthGatekeeper extends StatelessWidget {
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          // Upgraded to match the off-white premium background of the app
+          return const Scaffold(
+            backgroundColor: Color(0xFFF4F6F9),
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E3192)),
+            ),
+          );
         }
 
         final session = snapshot.data?.session;
@@ -54,7 +62,6 @@ class AuthGatekeeper extends StatelessWidget {
           // User is logged in! Go to the main dashboard.
           return const HomeScreen();
         } else {
-          // User is NOT logged in. Go to Login Screen.
           // User is NOT logged in. Go to Login Screen.
           return const LoginScreen();
         }

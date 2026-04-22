@@ -17,6 +17,10 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
   List<dynamic> _profiles = [];
   bool _isLoading = true;
 
+  // Active Filters
+  String _selectedYear = 'All';
+  final _branchFilterController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -26,17 +30,89 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
   @override
   void dispose() {
     _swiperController.dispose();
+    _branchFilterController.dispose();
     super.dispose();
   }
 
   Future<void> _loadProfiles() async {
-    final data = await _vibeService.fetchPotentialRoommates();
+    setState(() => _isLoading = true);
+
+    // Pass the active filters to the service
+    final data = await _vibeService.fetchPotentialRoommates(
+      yearFilter: _selectedYear,
+      branchFilter: _branchFilterController.text.trim(),
+    );
+
     if (mounted) {
       setState(() {
         _profiles = data;
         _isLoading = false;
       });
     }
+  }
+
+  // --- THE FILTER MODAL ---
+  void _showFilterModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return StatefulBuilder( // StatefulBuilder allows the modal to update its own UI
+            builder: (context, setModalState) {
+              return Padding(
+                padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                    left: 24, right: 24, top: 24
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text("Filter Matches", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                    const SizedBox(height: 20),
+
+                    const Text("Academic Year", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedYear,
+                      decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                      items: ['All', 'FY', 'SY', 'TY', 'Final'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                      onChanged: (v) => setModalState(() => _selectedYear = v!),
+                    ),
+                    const SizedBox(height: 16),
+
+                    const Text("Branch / Major", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _branchFilterController,
+                      decoration: InputDecoration(
+                        hintText: "e.g., CSE, Mechanical (Leave blank for all)",
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context); // Close the modal
+                        _loadProfiles(); // Reload the deck with the new filters!
+                      },
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.pinkAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16)
+                      ),
+                      child: const Text("Apply Filters", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              );
+            }
+        );
+      },
+    );
   }
 
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
@@ -72,8 +148,13 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.pinkAccent),
         actions: [
+          // Filter Button Added Here
           IconButton(
-            icon: const Icon(Icons.tune_rounded), // Changed icon to look like "Settings/Tune"
+            icon: const Icon(Icons.filter_list_rounded),
+            onPressed: _showFilterModal,
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune_rounded),
             onPressed: () {
               Navigator.push(
                 context,
@@ -87,7 +168,7 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: Colors.pinkAccent))
             : _profiles.isEmpty
-            ? const Center(child: Text("No new profiles in your area.", style: TextStyle(fontSize: 18)))
+            ? const Center(child: Text("No new profiles match your filters.", style: TextStyle(fontSize: 18)))
             : Column(
           children: [
             const Padding(
@@ -134,8 +215,7 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
     );
   }
 
-  // The actual UI for the Tinder-style card
-// The actual UI for the Tinder-style card with REAL DB Data!
+  // The actual UI for the Tinder-style card with REAL DB Data!
   Widget _buildProfileCard(dynamic profile) {
     // Safely extract the real data from the database payload
     final String? avatarUrl = profile['avatar_url'];

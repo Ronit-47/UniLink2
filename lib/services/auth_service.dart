@@ -3,58 +3,164 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   final supabase = Supabase.instance.client;
 
-  // 1. SIGN UP & DOMAIN RESTRICTION
-  Future<String?> signUp({
+  // The strict list of allowed domains based on your project spec
+  final List<String> allowedDomains = [
+    'vit.edu',
+    'mitwpu.edu.in',
+    'coep.ac.in',
+    'pict.edu',
+    'bvucoep.edu.in'
+  ];
+
+  // ==========================================
+  // SIGN UP FLOW (Password + OTP Verification)
+  // ==========================================
+
+  /// SIGNUP STEP 1: Register email/password and trigger the OTP email
+  Future<String?> signUpWithOTP({
     required String email,
     required String password,
-    required String fullName,
   }) async {
-    // THE BOUNCER: Reject non-college emails instantly
-    if (!email.trim().toLowerCase().endsWith('@vit.edu')) {
-      return "Access Denied: You must use a @vit.edu college email to join UniLink.";
-    }
-
     try {
-      // Create the user in the hidden Auth system
-      final AuthResponse res = await supabase.auth.signUp(
+      final domain = email.trim().split('@').last;
+
+      // Zero-Trust Domain Check
+      if (!allowedDomains.contains(domain)) {
+        return "Access Denied: Please use a verified college email address.";
+      }
+
+      // This creates the user in Supabase AND sends the 6-digit code
+      await supabase.auth.signUp(
         email: email.trim(),
-        password: password.trim(),
+        password: password,
       );
 
-      final user = res.user;
-      if (user != null) {
-        // If successful, insert their details into our new 'profiles' table
-        await supabase.from('profiles').insert({
-          'id': user.id, // This is the Foreign Key link!
-          'full_name': fullName.trim(),
-          'college_email': email.trim(),
-        });
-        return null; // Returning null means "No Errors / Success"
-      }
+      return null; // Success! OTP sent.
     } on AuthException catch (e) {
       return e.message;
     } catch (e) {
-      return "An unexpected error occurred: $e";
+      return "Signup failed: ${e.toString()}";
     }
-    return "Unknown error";
   }
 
-  // 2. LOG IN
-  Future<String?> login({required String email, required String password}) async {
+  /// SIGNUP STEP 2: Verify the code and save their Full Name & College
+  Future<String?> verifySignupOTP({
+    required String email,
+    required String code,
+    required String fullName,
+  }) async {
+    try {
+      final response = await supabase.auth.verifyOTP(
+        type: OtpType.signup, // Specific type for new account verification
+        email: email.trim(),
+        token: code.trim(),
+      );
+
+      if (response.user != null) {
+        // Automatically classify the user into their college
+        await _classifyAndSetupUser(response.user!.id, email.trim(), fullName: fullName.trim());
+        return null; // Success! Fully verified and profiled.
+      }
+      return "Invalid verification code.";
+    } catch (e) {
+      return "Verification failed: ${e.toString()}";
+    }
+  }
+
+  // ==========================================
+  // LOGIN FLOWS
+  // ==========================================
+
+  /// LOGIN WAY 1: Standard Password Login (For returning users who already signed up)
+  Future<String?> loginWithPassword({
+    required String email,
+    required String password,
+  }) async {
     try {
       await supabase.auth.signInWithPassword(
         email: email.trim(),
-        password: password.trim(),
+        password: password,
       );
-      return null; // Success
+      return null; // Success!
     } on AuthException catch (e) {
-      return e.message;
+      return e.message; // E.g., "Invalid login credentials"
     } catch (e) {
-      return "An unexpected error occurred.";
+      return "Login failed: ${e.toString()}";
     }
   }
 
-  // 3. LOG OUT
+  /// LOGIN WAY 2: Passwordless OTP Login (If they forgot their password)
+  Future<String?> sendOTP(String email) async {
+    try {
+      final domain = email.trim().split('@').last;
+
+      if (!allowedDomains.contains(domain)) {
+        return "Access Denied: Please use a verified college email address.";
+      }
+
+      await supabase.auth.signInWithOtp(
+        email: email.trim(),
+        shouldCreateUser: false, // Set to false so it ONLY logs in existing users
+      );
+
+      return null;
+    } catch (e) {
+      return "Failed to send code: ${e.toString()}";
+    }
+  }
+
+  /// LOGIN WAY 2 STEP 2: Verify passwordless login code
+  Future<String?> verifyOTP(String email, String code) async {
+    try {
+      final response = await supabase.auth.verifyOTP(
+        type: OtpType.magiclink, // Standard login type
+        email: email.trim(),
+        token: code.trim(),
+      );
+
+      if (response.user != null) {
+        return null; // Success!
+      }
+      return "Invalid verification code.";
+    } catch (e) {
+      return "Verification failed: ${e.toString()}";
+    }
+  }
+
+  // ==========================================
+  // UTILITY METHODS
+  // ==========================================
+
+  /// Automatically classify the user by their email domain and save to DB
+  Future<void> _classifyAndSetupUser(String userId, String email, {String? fullName}) async {
+    final domain = email.split('@').last;
+
+    // Fetch the college_id from our master colleges table
+    final collegeData = await supabase
+        .from('colleges')
+        .select('id')
+        .eq('email_domain', domain)
+        .single();
+
+    final int collegeId = collegeData['id'];
+
+    // If no full name was provided, infer it from the email
+    String nameToSave = fullName ?? '';
+    if (nameToSave.isEmpty) {
+      String inferredName = email.split('@').first.split('.').first;
+      nameToSave = inferredName[0].toUpperCase() + inferredName.substring(1);
+    }
+
+    // Upsert the profile with their assigned college ID
+    await supabase.from('profiles').upsert({
+      'id': userId,
+      'college_id': collegeId,
+      'full_name': nameToSave,
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Logout function
   Future<void> logout() async {
     await supabase.auth.signOut();
   }
