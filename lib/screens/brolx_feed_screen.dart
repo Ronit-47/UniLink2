@@ -14,6 +14,8 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
   List<dynamic> _items = [];
   bool _isLoading = true;
   String _selectedCategory = 'All';
+  bool _showMyListings = false;
+
 
   // Tracks which items the user has already requested (itemId -> bool)
   final Map<String, bool> _requestedItems = {};
@@ -26,19 +28,22 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
 
   Future<void> _loadItems() async {
     setState(() => _isLoading = true);
-    final data = await _brolxService.fetchMarketplaceItems(
-      category: _selectedCategory == 'All' ? null : _selectedCategory,
-    );
+    
+    // If toggle is ON, fetch only my items. Otherwise, fetch normally.
+    final data = _showMyListings 
+      ? await _brolxService.fetchMyMarketplaceItems()
+      : await _brolxService.fetchMarketplaceItems(
+          category: _selectedCategory == 'All' ? null : _selectedCategory,
+        );
+        
     if (mounted) {
       setState(() {
         _items = data;
         _isLoading = false;
       });
-      // Pre-check request status for visible items
       _checkRequestStatuses(data);
     }
   }
-
   Future<void> _checkRequestStatuses(List<dynamic> items) async {
     for (final item in items) {
       final itemId = item['id']?.toString();
@@ -157,6 +162,20 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
             ),
             iconTheme: const IconThemeData(color: Colors.blueAccent),
             actions: [
+              // 📍 1. PASTE THE NEW "MY LISTINGS" BUTTON HERE
+              IconButton(
+                icon: Icon(_showMyListings ? Icons.storefront : Icons.inventory_2_outlined),
+                tooltip: _showMyListings ? "Back to Marketplace" : "My Listings",
+                onPressed: () {
+                  setState(() {
+                    _showMyListings = !_showMyListings;
+                    _selectedCategory = 'All'; // Reset category filter
+                  });
+                  _loadItems();
+                },
+              ),
+              
+              // This is your existing refresh button, leave it here!
               IconButton(icon: const Icon(Icons.refresh), onPressed: _loadItems),
             ],
             bottom: PreferredSize(
@@ -332,8 +351,11 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
                     ),
 
                     // Contact button — hidden for own listings
+                    // If it's not my listing, show Contact. If it IS mine, show Manage options.
                     if (!isOwner)
-                      _buildContactButton(isRequested, item),
+                      _buildContactButton(isRequested, item)
+                    else
+                      _buildOwnerActionButtons(item),
                   ],
                 ),
               ],
@@ -374,6 +396,90 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
       ),
       child: const Text("Contact", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
     );
+  }
+  // ── OWNER ACTIONS UI ──────────────────────────────────────────────────────
+  Widget _buildOwnerActionButtons(dynamic item) {
+    final itemId = item['id'].toString();
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // EDIT BUTTON
+        IconButton(
+          onPressed: () async {
+            // Push to the Add screen, but pass the current item data!
+            final shouldRefresh = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AddBrolxItemScreen(initialItem: item),
+              ),
+            );
+            if (shouldRefresh == true) _loadItems(); // Refresh feed after editing
+          },
+          icon: const Icon(Icons.edit_note, color: Colors.blueAccent),
+          tooltip: "Edit Listing",
+        ),
+        
+        // MARK AS SOLD BUTTON
+        ElevatedButton.icon(
+          onPressed: () => _handleMarkAsSold(itemId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            elevation: 0,
+          ),
+          icon: const Icon(Icons.check_circle_outline, size: 16),
+          label: const Text("Mark Sold", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    );
+  }
+
+  // ── MARK AS SOLD LOGIC ────────────────────────────────────────────────────
+  Future<void> _handleMarkAsSold(String itemId) async {
+    // 1. Show confirmation popup
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Mark as Sold?", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text("This will remove the item from the active marketplace. This action cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green, 
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Yes, Sold it!"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // 2. Update Database & Refresh UI
+    setState(() => _isLoading = true);
+    final error = await _brolxService.markAsSold(itemId);
+    
+    if (!mounted) return;
+
+    if (error == null) {
+      _loadItems(); // Automatically refreshes the feed to make the item vanish
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Item successfully marked as sold!"), backgroundColor: Colors.green),
+      );
+    } else {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _buildImageCarousel(List<String> urls) {

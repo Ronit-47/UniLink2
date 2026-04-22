@@ -5,7 +5,9 @@ import 'package:image_picker/image_picker.dart';
 import '../services/brolx_service.dart';
 
 class AddBrolxItemScreen extends StatefulWidget {
-  const AddBrolxItemScreen({super.key});
+  final Map<String, dynamic>? initialItem; // ADDED: Accepts existing data
+
+  const AddBrolxItemScreen({super.key, this.initialItem});
 
   @override
   State<AddBrolxItemScreen> createState() => _AddBrolxItemScreenState();
@@ -21,9 +23,25 @@ class _AddBrolxItemScreenState extends State<AddBrolxItemScreen> {
   bool _isLoading = false;
   final _brolxService = BrolxService();
 
-  // FIX 1: Use XFile instead of File
   final List<XFile> _selectedImages = [];
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    // ADDED: If we passed an item in, pre-fill all the text fields!
+    if (widget.initialItem != null) {
+      _titleController.text = widget.initialItem!['title'] ?? '';
+      _descController.text = widget.initialItem!['description'] ?? '';
+      _priceController.text = widget.initialItem!['price']?.toString() ?? '';
+      _selectedType = widget.initialItem!['listing_type'] ?? 'Sell';
+      
+      final cat = widget.initialItem!['category'];
+      if (BrolxService.categories.contains(cat)) {
+        _selectedCategory = cat;
+      }
+    }
+  }
 
   Future<void> _pickImages() async {
     if (_selectedImages.length >= 5) {
@@ -68,15 +86,29 @@ class _AddBrolxItemScreenState extends State<AddBrolxItemScreen> {
 
     setState(() => _isLoading = true);
 
-    final error = await _brolxService.addItem(
-      title: _titleController.text,
-      description: _descController.text,
-      price: _priceController.text,
-      listingType: _selectedType,
-      category: _selectedCategory,
-      // Sending List<XFile> now
-      imageFiles: _selectedImages.isEmpty ? null : _selectedImages,
-    );
+    String? error;
+
+    // Check if we are editing or creating
+    if (widget.initialItem != null) {
+      // EDIT MODE
+      error = await _brolxService.updateItemDetails(
+        itemId: widget.initialItem!['id'].toString(),
+        title: _titleController.text,
+        description: _descController.text,
+        price: _priceController.text,
+        category: _selectedCategory,
+      );
+    } else {
+      // CREATE MODE
+      error = await _brolxService.addItem(
+        title: _titleController.text,
+        description: _descController.text,
+        price: _priceController.text,
+        listingType: _selectedType,
+        category: _selectedCategory,
+        imageFiles: _selectedImages.isEmpty ? null : _selectedImages,
+      );
+    }
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -86,7 +118,10 @@ class _AddBrolxItemScreenState extends State<AddBrolxItemScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Item Posted!"), backgroundColor: Colors.green),
+           SnackBar(
+             content: Text(widget.initialItem != null ? "Item Updated!" : "Item Posted!"), 
+             backgroundColor: Colors.green
+           ),
         );
         Navigator.pop(context, true);
       }

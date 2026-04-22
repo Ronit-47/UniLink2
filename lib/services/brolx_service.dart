@@ -15,6 +15,7 @@ class BrolxService {
     'Appliances',
     'Clothing',
     'Sports',
+    'Vehicles',
     'Other',
   ];
 
@@ -136,6 +137,60 @@ class BrolxService {
       return null; // success
     } catch (e) {
       return "Error sending request: $e";
+    }
+  }
+  // ─── 5. MARK ITEM AS SOLD / RENTED ────────────────────────────────────────
+  Future<String?> markAsSold(String itemId) async {
+    try {
+      // Flips the boolean so it instantly disappears from the main feed
+      await supabase
+          .from('brolx_items')
+          .update({'is_available': false})
+          .eq('id', itemId);
+          
+      return null; // success
+    } catch (e) {
+      return "Error updating status: $e";
+    }
+  }
+
+  // ─── 6. EDIT EXISTING ITEM ────────────────────────────────────────────────
+  Future<String?> updateItemDetails({
+    required String itemId,
+    required String title,
+    required String description,
+    required String price,
+    required String category,
+  }) async {
+    try {
+      await supabase
+          .from('brolx_items')
+          .update({
+            'title': title.trim(),
+            'description': description.trim(),
+            'price': price.trim(),
+            'category': category,
+          })
+          .eq('id', itemId);
+          
+      return null; // success
+    } catch (e) {
+      return "Error updating item: $e";
+    }
+  }
+  // ─── 7. FETCH LOGGED-IN USER'S ITEMS ──────────────────────────────────────
+  Future<List<dynamic>> fetchMyMarketplaceItems() async {
+    try {
+      final userId = supabase.auth.currentUser!.id;
+      final response = await supabase
+          .from('brolx_items')
+          .select('*, profiles(full_name, course)')
+          .eq('seller_id', userId)
+          .order('created_at', ascending: false);
+      return response as List<dynamic>;
+    } catch (e) {
+      print("Fetch my items error: $e");
+      return [];
     }
   }
 
