@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/brolx_service.dart';
+import '../services/chat_service.dart';
 import 'add_brolx_item_screen.dart';
+import 'chat_screen.dart';
 
 class BrolxFeedScreen extends StatefulWidget {
   const BrolxFeedScreen({super.key});
@@ -11,6 +13,7 @@ class BrolxFeedScreen extends StatefulWidget {
 
 class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
   final _brolxService = BrolxService();
+  final _chatService = ChatService();
   List<dynamic> _items = [];
   bool _isLoading = true;
   String _selectedCategory = 'All';
@@ -118,6 +121,7 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
 
     if (confirmed != true) return;
 
+    // 1. Record the contact request in Supabase
     final error = await _brolxService.sendContactRequest(
       itemId: itemId,
       sellerId: sellerId,
@@ -128,12 +132,66 @@ class _BrolxFeedScreenState extends State<BrolxFeedScreen> {
 
     if (error == null) {
       setState(() => _requestedItems[itemId] = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("✅ Request sent! The seller will be notified."),
-          backgroundColor: Colors.green,
-        ),
-      );
+
+      // 2. Send the message through Firebase chat
+      try {
+        final sellerName = item['profiles']?['full_name'] ?? 'Seller';
+        final sellerAvatar = item['profiles']?['avatar_url'] ?? '';
+        final myProfile = await _chatService.fetchMyProfile();
+
+        // Create or open the conversation
+        final conversationId = await _chatService.getOrCreateConversation(
+          otherUserId: sellerId,
+          otherUserName: sellerName,
+          otherUserAvatar: sellerAvatar,
+          myName: myProfile['name'] ?? 'Me',
+          myAvatar: myProfile['avatar'] ?? '',
+        );
+
+        // Format the message with item context
+        final itemTitle = item['title'] ?? 'your listing';
+        final chatMessage = "[BroLX - $itemTitle]\n${userMessage ?? "Hi! I'm interested in your listing."}";
+
+        // Send the message via Firebase
+        await _chatService.sendMessage(
+          conversationId: conversationId,
+          content: chatMessage,
+          senderName: myProfile['name'] ?? 'Me',
+          receiverId: sellerId,
+        );
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("✅ Message sent to the seller!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // 3. Navigate to the chat screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              conversationId: conversationId,
+              otherUserName: sellerName,
+              otherUserAvatar: sellerAvatar,
+              receiverId: sellerId,
+            ),
+          ),
+        );
+      } catch (chatError) {
+        print("⚠️ Chat send failed (non-fatal): $chatError");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("✅ Request sent! (Chat message could not be delivered)"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
     } else if (error == "already_sent") {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("You've already requested this item.")),
