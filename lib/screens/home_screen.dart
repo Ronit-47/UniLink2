@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
 
-// Import your 4 feature screens!
+// Import your feature screens!
 import 'vibematch_screen.dart';
 import 'brolx_feed_screen.dart';
 import 'vault_feed_screen.dart';
 import 'circles_screen.dart';
+import 'account_screen.dart';
+import 'notifications_screen.dart'; // NEW: Imported the notifications screen!
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _authService = AuthService();
 
   String _userName = "Student";
+  String? _avatarUrl;
   bool _isLoading = true;
 
   @override
@@ -31,19 +34,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchUserProfile() async {
     try {
-      final userId = _supabase.auth.currentUser!.id;
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
       final data = await _supabase
           .from('profiles')
-          .select('full_name')
-          .eq('id', userId)
-          .single();
+          .select('full_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      if (mounted) {
+      if (mounted && data != null) {
         setState(() {
-          // Grab just the first name for a friendlier greeting
-          _userName = data['full_name'].toString().split(' ')[0];
+          final String fullName = data['full_name']?.toString() ?? "Student";
+          _userName = fullName.isNotEmpty ? fullName.split(' ')[0] : "Student";
+          _avatarUrl = data['avatar_url'];
           _isLoading = false;
         });
+      } else if (mounted) {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Error fetching profile: $e");
@@ -53,16 +61,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleLogout() async {
     await _authService.logout();
-    // main.dart Gatekeeper handles the redirect
+    // main.dart Gatekeeper handles the redirect back to Login
   }
 
   @override
   Widget build(BuildContext context) {
-    // Make the top status bar icons white to contrast with our dark gradient
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F9), // A very premium, soft off-white
+      backgroundColor: const Color(0xFFF4F6F9),
       body: Column(
         children: [
           // 1. THE IMMERSIVE HEADER
@@ -71,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.only(top: 60, left: 24, right: 24, bottom: 40),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF2E3192), Color(0xFF1BFFFF)], // Deep Indigo to Cyan
+                colors: [Color(0xFF2E3192), Color(0xFF1BFFFF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -88,12 +95,54 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const Text(
                       "UniLink",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1.2),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                          letterSpacing: 1.2
+                      ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.logout_rounded, color: Colors.white70),
-                      onPressed: _handleLogout,
-                      tooltip: "Log Out",
+                    // PROFILE, NOTIFICATIONS & LOGOUT ACTIONS
+                    Row(
+                      children: [
+                        // --- NEW: NOTIFICATION BELL ---
+                        IconButton(
+                          icon: const Icon(Icons.notifications_active_rounded, color: Colors.white),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 4),
+
+                        // The Profile Logo Trigger
+                        GestureDetector(
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const AccountScreen()),
+                            );
+                            _fetchUserProfile();
+                          },
+                          child: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Colors.white24,
+                            backgroundImage: _avatarUrl != null ? NetworkImage(_avatarUrl!) : null,
+                            child: _avatarUrl == null
+                                ? const Icon(Icons.person_rounded, color: Colors.white, size: 20)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        IconButton(
+                          icon: const Icon(Icons.logout_rounded, color: Colors.white70),
+                          onPressed: _handleLogout,
+                          tooltip: "Log Out",
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -104,10 +153,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 4),
                 _isLoading
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                )
                     : Text(
                   _userName,
-                  style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5
+                  ),
                 ),
               ],
             ),
@@ -117,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.only(top: 30, left: 20, right: 20, bottom: 40),
-              physics: const BouncingScrollPhysics(), // Adds an Apple-like bounce effect
+              physics: const BouncingScrollPhysics(),
               children: [
                 const Text(
                   "Your Campus",
@@ -127,18 +185,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 GridView.count(
                   crossAxisCount: 2,
-                  shrinkWrap: true, // Required to use GridView inside a ListView
+                  shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 0.85, // Makes the cards slightly taller than they are wide
+                  childAspectRatio: 0.85,
                   children: [
                     _buildPremiumCard(
                       context,
                       title: "VibeMatch",
                       subtitle: "Find your flatmate",
                       icon: Icons.favorite_rounded,
-                      accentColor: const Color(0xFFFF4B8C), // Vibrant Pink
+                      accentColor: const Color(0xFFFF4B8C),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VibeMatchScreen())),
                     ),
                     _buildPremiumCard(
@@ -146,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: "BroLX",
                       subtitle: "Campus marketplace",
                       icon: Icons.shopping_bag_rounded,
-                      accentColor: const Color(0xFF4A89FE), // Bright Blue
+                      accentColor: const Color(0xFF4A89FE),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BrolxFeedScreen())),
                     ),
                     _buildPremiumCard(
@@ -154,15 +212,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: "The Vault",
                       subtitle: "Academic resources",
                       icon: Icons.folder_copy_rounded,
-                      accentColor: const Color(0xFF00C9A7), // Teal/Green
+                      accentColor: const Color(0xFF00C9A7),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VaultFeedScreen())),
                     ),
                     _buildPremiumCard(
                       context,
-                      title: "Circles", // Updated from Roster!
+                      title: "Circles",
                       subtitle: "Your network",
                       icon: Icons.forum_rounded,
-                      accentColor: const Color(0xFF8A2BE2), // Deep Purple
+                      accentColor: const Color(0xFF8A2BE2),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CirclesScreen())),
                     ),
                   ],
@@ -188,7 +246,6 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          // This creates a glowing, colored shadow instead of a dull grey one
           BoxShadow(
             color: accentColor.withOpacity(0.15),
             spreadRadius: 0,
@@ -210,7 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Top Icon Box
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -219,8 +275,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Icon(icon, size: 32, color: accentColor),
                 ),
-
-                // Bottom Text Area
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -233,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       subtitle,
                       style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis, // Ensures text doesn't break the layout if it's too long
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

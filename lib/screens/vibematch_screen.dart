@@ -268,7 +268,35 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: Colors.pinkAccent))
             : _profiles.isEmpty
-            ? const Center(child: Text("No new profiles match your filters.", style: TextStyle(fontSize: 18)))
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("No new profiles match your filters.", style: TextStyle(fontSize: 18)),
+                      if (_vibeService.lastFetchError != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          "Error: ${_vibeService.lastFetchError}",
+                          style: const TextStyle(fontSize: 12, color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: _loadProfiles,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Retry"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.pinkAccent,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
             : Column(
           children: [
             const Padding(
@@ -339,16 +367,17 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
     final String branch = profile['branch'] ?? 'Student';
     final String div = profile['division'] ?? '-';
 
+    // Extract swipe status: 'RIGHT', 'LEFT', or null
+    final String? swipeStatus = profile['swipe_status'];
+
     // 2. 🛡️ SAFE DATA EXTRACTION (Handles both List and Map types)
     Map<String, dynamic>? vibeData;
     final rawVibeData = profile['vibe_quizzes'];
 
     if (rawVibeData != null) {
       if (rawVibeData is List && rawVibeData.isNotEmpty) {
-        // If it's a list (from a join), take the first entry
         vibeData = rawVibeData.first as Map<String, dynamic>;
       } else if (rawVibeData is Map<String, dynamic>) {
-        // If it's already a map (from an upsert/single select), use it directly
         vibeData = rawVibeData;
       }
     }
@@ -357,7 +386,6 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
     final String rawGreenFlags = vibeData?['green_flags'] ?? '';
     final String rawRedFlags = vibeData?['red_flags'] ?? '';
 
-    // Convert comma-separated strings into Lists, ignoring empty ones
     List<String> greenFlags = rawGreenFlags.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     List<String> redFlags = rawRedFlags.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
@@ -446,6 +474,35 @@ class _VibeMatchScreenState extends State<VibeMatchScreen> {
                 ],
               ),
             ),
+
+            // LAYER 5: Swipe Status Badge (top-right corner)
+            if (swipeStatus != null)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: swipeStatus == 'RIGHT'
+                        ? Colors.pinkAccent.withOpacity(0.85)
+                        : Colors.grey[800]!.withOpacity(0.85),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    swipeStatus == 'RIGHT' ? Icons.favorite_rounded : Icons.close_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

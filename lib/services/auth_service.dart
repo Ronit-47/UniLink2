@@ -16,10 +16,13 @@ class AuthService {
   // SIGN UP FLOW (Password + OTP Verification)
   // ==========================================
 
-  /// SIGNUP STEP 1: Register email/password and trigger the OTP email
+  /// SIGNUP STEP 1: Register email/password, bundle profile data, and trigger the OTP email
   Future<String?> signUpWithOTP({
     required String email,
     required String password,
+    required String fullName,
+    required String year,
+    required String branch,
   }) async {
     try {
       final domain = email.trim().split('@').last;
@@ -29,10 +32,16 @@ class AuthService {
         return "Access Denied: Please use a verified college email address.";
       }
 
-      // This creates the user in Supabase AND sends the 6-digit code
+      // This creates the user, sends the 6-digit code, AND bundles the data
+      // so your SQL trigger can instantly build the profile row!
       await supabase.auth.signUp(
         email: email.trim(),
         password: password,
+        data: {
+          'full_name': fullName.trim(),
+          'academic_year': year,
+          'branch': branch.trim(),
+        },
       );
 
       return null; // Success! OTP sent.
@@ -43,11 +52,10 @@ class AuthService {
     }
   }
 
-  /// SIGNUP STEP 2: Verify the code and save their Full Name & College
+  /// SIGNUP STEP 2: Verify the code and classify their college
   Future<String?> verifySignupOTP({
     required String email,
     required String code,
-    required String fullName,
   }) async {
     try {
       final response = await supabase.auth.verifyOTP(
@@ -57,8 +65,8 @@ class AuthService {
       );
 
       if (response.user != null) {
-        // Automatically classify the user into their college
-        await _classifyAndSetupUser(response.user!.id, email.trim(), fullName: fullName.trim());
+        // Automatically classify the user into their college based on domain
+        await _classifyAndSetupUser(response.user!.id, email.trim());
         return null; // Success! Fully verified and profiled.
       }
       return "Invalid verification code.";
@@ -132,32 +140,30 @@ class AuthService {
   // ==========================================
 
   /// Automatically classify the user by their email domain and save to DB
-  Future<void> _classifyAndSetupUser(String userId, String email, {String? fullName}) async {
-    final domain = email.split('@').last;
+  Future<void> _classifyAndSetupUser(String userId, String email) async {
+    try {
+      final domain = email.split('@').last;
 
-    // Fetch the college_id from our master colleges table
-    final collegeData = await supabase
-        .from('colleges')
-        .select('id')
-        .eq('email_domain', domain)
-        .single();
+      // Fetch the college_id from our master colleges table
+      final collegeData = await supabase
+          .from('colleges')
+          .select('id')
+          .eq('email_domain', domain)
+          .maybeSingle();
 
-    final int collegeId = collegeData['id'];
+      if (collegeData != null) {
+        final int collegeId = collegeData['id'];
 
-    // If no full name was provided, infer it from the email
-    String nameToSave = fullName ?? '';
-    if (nameToSave.isEmpty) {
-      String inferredName = email.split('@').first.split('.').first;
-      nameToSave = inferredName[0].toUpperCase() + inferredName.substring(1);
+        // Because the SQL Trigger already created the profile row with their
+        // Name, Year, and Branch, we just UPDATE the row with their mapped college_id.
+        await supabase.from('profiles').update({
+          'college_id': collegeId,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', userId);
+      }
+    } catch (e) {
+      print("Classification error: $e");
     }
-
-    // Upsert the profile with their assigned college ID
-    await supabase.from('profiles').upsert({
-      'id': userId,
-      'college_id': collegeId,
-      'full_name': nameToSave,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
   }
 
   /// Logout function

@@ -10,9 +10,12 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   final _nameController = TextEditingController();
+  final _branchController = TextEditingController(); // NEW: Added Branch Controller
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _otpController = TextEditingController();
+
+  String _selectedYear = 'FY'; // NEW: Added Year Tracker
 
   final _authService = AuthService();
 
@@ -20,7 +23,10 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _otpPhase = false; // Toggles between the Signup form and the OTP input
 
   Future<void> _handleRequestOTP() async {
-    if (_nameController.text.isEmpty || _emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    if (_nameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _passwordController.text.isEmpty ||
+        _branchController.text.isEmpty) {
       _showError("Please fill all fields", Colors.orange);
       return;
     }
@@ -31,10 +37,13 @@ class _SignupScreenState extends State<SignupScreen> {
 
     setState(() => _isLoading = true);
 
-    // Call the AuthService to create the account and send the OTP
+    // Call the AuthService to create the account, bundle the data, and send the OTP
     final error = await _authService.signUpWithOTP(
       email: _emailController.text,
       password: _passwordController.text,
+      fullName: _nameController.text,
+      year: _selectedYear,
+      branch: _branchController.text,
     );
 
     if (mounted) {
@@ -59,11 +68,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
     setState(() => _isLoading = true);
 
-    // Verify the OTP and save their profile data
+    // Verify the OTP (Name, Year, and Branch are already safely in the DB!)
     final error = await _authService.verifySignupOTP(
       email: _emailController.text,
       code: _otpController.text,
-      fullName: _nameController.text,
     );
 
     if (mounted) {
@@ -72,7 +80,7 @@ class _SignupScreenState extends State<SignupScreen> {
         _showError(error, Colors.red);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Welcome to UniLink! \u2728"), backgroundColor: Colors.indigo),
+          const SnackBar(content: Text("Welcome to UniLink! ✨"), backgroundColor: Colors.indigo),
         );
         // The Gatekeeper in main.dart will automatically detect the login and route to HomeScreen!
         Navigator.pop(context);
@@ -117,11 +125,35 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // NEW: Academic Year Dropdown
+                DropdownButtonFormField<String>(
+                  value: _selectedYear,
+                  decoration: InputDecoration(
+                    labelText: "Academic Year",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.school_outlined),
+                  ),
+                  items: ['FY', 'SY', 'TY', 'Final'].map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
+                  onChanged: (val) => setState(() => _selectedYear = val!),
+                ),
+                const SizedBox(height: 16),
+
+                // NEW: Branch TextField
+                TextField(
+                  controller: _branchController,
+                  decoration: InputDecoration(
+                    labelText: "Branch (e.g. CSE, IT)",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.menu_book_outlined),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: "College Email",
-                    hintText: "e.g. @vit.edu, @coep.ac.in",
+                    hintText: "e.g. @vit.edu",
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.email_outlined),
                   ),

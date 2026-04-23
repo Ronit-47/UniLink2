@@ -69,12 +69,18 @@ class VaultService {
     }
   }
 
+  // Store the last error for debugging
+  String? lastFetchError;
+
   // Fetches files based on Year, Branch, and Search Query
   Future<List<dynamic>> fetchVaultFiles(String year, String branch, String searchQuery) async {
+    lastFetchError = null;
     try {
+      print("📂 VAULT: Fetching files for year=$year, branch=$branch, search='$searchQuery'");
+
       var query = supabase
           .from('vault_files')
-          .select('*, profiles(full_name)')
+          .select()
           .eq('academic_year', year);
 
       if (branch != 'All') {
@@ -82,11 +88,7 @@ class VaultService {
       }
 
       if (searchQuery.isNotEmpty) {
-        // Split the search query by spaces or underscores
         final keywords = searchQuery.split(RegExp(r'[\s_]+'));
-
-        // Build a dynamic search string for Supabase
-        // This makes sure EVERY keyword must exist somewhere in the row
         for (String keyword in keywords) {
           if (keyword.isNotEmpty) {
             query = query.or('subject.ilike.%$keyword%,topic.ilike.%$keyword%,file_name.ilike.%$keyword%');
@@ -94,11 +96,46 @@ class VaultService {
         }
       }
 
-      // Supabase returns a List of Maps by default
-      final response = await query;
-      return response as List<dynamic>;
+      final List<dynamic> files = await query;
+      print("✅ VAULT: Fetched ${files.length} files.");
+
+      if (files.isEmpty) return [];
+
+      // Fetch uploader names separately to avoid join issues
+      try {
+        final uploaderIds = files
+            .map((f) => f['uploader_id']?.toString())
+            .where((id) => id != null)
+            .toSet()
+            .toList();
+
+        if (uploaderIds.isNotEmpty) {
+          final profilesResponse = await supabase
+              .from('profiles')
+              .select('id, full_name')
+              .inFilter('id', uploaderIds);
+
+          final Map<String, String> nameMap = {};
+          for (final p in (profilesResponse as List)) {
+            nameMap[p['id'].toString()] = p['full_name'] ?? 'Unknown';
+          }
+
+          for (final file in files) {
+            final uid = file['uploader_id']?.toString();
+            file['profiles'] = {'full_name': nameMap[uid] ?? 'Unknown Student'};
+          }
+        }
+      } catch (profileError) {
+        print("⚠️ VAULT: Could not fetch uploader names (non-fatal): $profileError");
+        for (final file in files) {
+          file['profiles'] = {'full_name': 'Unknown Student'};
+        }
+      }
+
+      return files;
     } catch (e) {
-      print("Fetch error: $e");
+      lastFetchError = e.toString();
+      print("❌ VAULT FETCH ERROR: $e");
       return [];
     }
   }
